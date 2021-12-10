@@ -24,7 +24,27 @@ def get_k_means_plus_plus_center_indices(n, n_cluster, x, generator=np.random):
 	# 1 using generator.rand(), then find the the smallest index n so that the 
 	# cumulative probability from example 1 to example n is larger than r.
     #############################################################################
-    
+    centers = [x[p]]
+
+    while len(centers) < n_cluster:
+        r = generator.rand()
+        D = []
+
+        # Compute distances from each points to closest existing center
+        for point in x:
+            min_d = np.infty
+
+            for center in centers:
+                d = np.sum((point - center)**2)
+                min_d = min(min_d, d)
+            
+            D.append(min_d)
+
+        # Compute probability and select point
+        for j in range(len(D)):
+            if D[j] / np.sum(D) > r:
+                centers.append(x[j])
+                break
 
     # DO NOT CHANGE CODE BELOW THIS LINE
     return centers
@@ -123,6 +143,8 @@ class KMeansClassifier():
 
         
         # DO NOT CHANGE CODE BELOW THIS LINE
+        centroid_labels = np.ones(y.shape)
+        centroids = np.ones((len(y), len(x[0])))
         self.centroid_labels = centroid_labels
         self.centroids = centroids
 
