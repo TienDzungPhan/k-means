@@ -93,9 +93,30 @@ class KMeans():
         #   (i.e., average K-mean objective changes less than self.e)
         #   or until you have made self.max_iter updates.
         ###################################################################
+        objective = None
+        membership = None
+        times = 0
 
-        
+        for t in range(self.max_iter):
+            times += 1
+            assignments = np.zeros((N, len(self.centers)))
+            new_membership = []
+            
+            for n in range(N):
+                label = np.argmin(np.array([np.sum((x[n] - center)**2) for center in self.centers]))
+                assignments[n][label] = 1
+                new_membership.append(label)
 
+            for k in range(len(self.centers)):
+                self.centers[k] = np.sum(np.array([assignments[n][k]*x[n] for n in range(N)])) / np.sum(np.transpose(assignments)[k])
+
+            membership = new_membership
+            new_objective = np.sum([np.sum((x[n] - self.centers[new_membership[n]])**2) for n in range(N)])
+            if objective != None and objective - new_objective <= self.e:
+                break
+            objective = new_objective
+    
+        return self.centers, membership, times
 
 class KMeansClassifier():
 
