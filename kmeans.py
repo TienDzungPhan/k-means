@@ -94,29 +94,30 @@ class KMeans():
         #   or until you have made self.max_iter updates.
         ###################################################################
         objective = None
-        membership = None
+        assignments = None
         times = 0
 
         for t in range(self.max_iter):
             times += 1
-            assignments = np.zeros((N, len(self.centers)))
+            membership = np.zeros((N, len(self.centers)))
             
-            # Update assignments
+            # Update membership
             for n in range(N):
                 label = np.argmin(np.array([np.sum((x[n] - self.centers[k])**2) for k in range(len(self.centers))]))
-                assignments[n][label] = 1
+                membership[n][label] = 1
 
             # Update centers
-            self.centers = (np.transpose(assignments) @ x) / (np.transpose(assignments) @ np.ones((N, D)))
+            self.centers = (np.transpose(membership) @ x) / (np.transpose(membership) @ np.ones(x.shape))
 
-            membership = assignments @ np.arange(len(self.centers))
-            new_objective = np.sum((assignments @ self.centers - x)**2)
+            assignments = membership @ np.arange(len(self.centers))
+            new_objective = np.sum((membership @ self.centers - x)**2)
 
             if objective != None and objective - new_objective <= self.e:
                 break
+
             objective = new_objective
     
-        return self.centers, membership, times
+        return self.centers, assignments, times
 
 class KMeansClassifier():
 
@@ -161,11 +162,32 @@ class KMeansClassifier():
         #      and "fit" with the given "centroid_func" function)
         # - assign labels to centroid_labels
         ################################################################
+        objective = None
+        membership = None
+        centroids = centroid_func(len(x), self.n_cluster, x, self.generator)
+        centroid_labels = np.ones(self.n_cluster)
 
+        for t in range(self.max_iter):
+            membership = np.zeros((N, self.n_cluster))
+            
+            # Update membership
+            for n in range(N):
+                label = np.argmin(np.array([np.sum((x[n] - centroids[k])**2) for k in range(self.n_cluster)]))
+                membership[n][label] = 1
+
+            # Update centers
+            centroids = (np.transpose(membership) @ x) / (np.transpose(membership) @ np.ones(x.shape))
+
+            new_objective = np.sum((membership @ centroids - x)**2)
+
+            if objective != None and objective - new_objective <= self.e:
+                break
+
+            objective = new_objective
+
+        centroid_labels = np.array([np.argmax(row) for row in np.transpose(membership) @ membership])
         
         # DO NOT CHANGE CODE BELOW THIS LINE
-        centroid_labels = np.ones(y.shape)
-        centroids = np.ones((len(y), len(x[0])))
         self.centroid_labels = centroid_labels
         self.centroids = centroids
 
@@ -193,8 +215,12 @@ class KMeansClassifier():
         # - for each example in x, predict its label using 1-NN on the stored 
         #    dataset (self.centroids, self.centroid_labels)
         ##########################################################################
-        
-
+        # Map x from (N, D) and centroids from (n_cluster, D) to (N, n_cluster, D)
+        # mapped_x = np.tile(x, (1, self.n_cluster)).reshape(N, self.n_cluster, D)
+        # mapped_centroids = np.tile(self.centroids.reshape(1, self.n_cluster*D), (N, 1)).reshape(N, self.n_cluster, D)
+        # distances = (mapped_x - mapped_centroids)**2
+        # print(np.argmin([(x[0] - self.centroids[k])**2 for k in range(self.n_cluster)]))
+        return np.array([self.centroid_labels[np.argmin([np.sum((point - self.centroids[k])**2) for k in range(self.n_cluster)])] for point in x])
 
 
 
