@@ -100,18 +100,18 @@ class KMeans():
         for t in range(self.max_iter):
             times += 1
             assignments = np.zeros((N, len(self.centers)))
-            new_membership = []
             
+            # Update assignments
             for n in range(N):
-                label = np.argmin(np.array([np.sum((x[n] - center)**2) for center in self.centers]))
+                label = np.argmin(np.array([np.sum((x[n] - self.centers[k])**2) for k in range(len(self.centers))]))
                 assignments[n][label] = 1
-                new_membership.append(label)
 
-            for k in range(len(self.centers)):
-                self.centers[k] = np.sum(np.array([assignments[n][k]*x[n] for n in range(N)])) / np.sum(np.transpose(assignments)[k])
+            # Update centers
+            self.centers = (np.transpose(assignments) @ x) / (np.transpose(assignments) @ np.ones((N, D)))
 
-            membership = new_membership
-            new_objective = np.sum([np.sum((x[n] - self.centers[new_membership[n]])**2) for n in range(N)])
+            membership = assignments @ np.arange(len(self.centers))
+            new_objective = np.sum((assignments @ self.centers - x)**2)
+
             if objective != None and objective - new_objective <= self.e:
                 break
             objective = new_objective
