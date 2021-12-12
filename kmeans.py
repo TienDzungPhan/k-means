@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.core.fromnumeric import argmin
 
 #################################
 # DO NOT IMPORT OHTER LIBRARIES
@@ -24,27 +25,25 @@ def get_k_means_plus_plus_center_indices(n, n_cluster, x, generator=np.random):
 	# 1 using generator.rand(), then find the the smallest index n so that the 
 	# cumulative probability from example 1 to example n is larger than r.
     #############################################################################
-    centers = [x[p]]
+    N, D = x.shape
+    centers = [p]
 
     while len(centers) < n_cluster:
-        r = generator.rand()
-        D = []
+        r = np.full(N, generator.rand())
+        centroids = np.array([x[i] for i in centers])
+        mapped_x = np.tile(x, (1, len(centers))).reshape(N, len(centers), D)
+        mapped_centroids = np.tile(centroids.reshape(1, len(centers) * D), (N, 1)).reshape(N, len(centers), D)
+        distances = np.einsum("ijk, ijk->ij", mapped_x - mapped_centroids, mapped_x - mapped_centroids)
+        max_distances = np.array([max(distance) for distance in distances])
+        argmax_distances = np.array([np.argmax(distances[i]) for i in range(len(distances))])
+        probabilities = max_distances / np.array([np.sum(np.transpose(distances)[k]) for k in argmax_distances])
+        cum_probs = np.cumsum(probabilities)
+        selections = np.array([0 if n in centers else 1 for n in range(N)])
 
-        # Compute distances from each points to closest existing center
-        for point in x:
-            min_d = np.infty
-
-            for center in centers:
-                d = np.sum((point - center)**2)
-                min_d = min(min_d, d)
-            
-            D.append(min_d)
-
-        # Compute probability and select point
-        for j in range(len(D)):
-            if D[j] / np.sum(D) > r:
-                centers.append(x[j])
-                break
+        if np.any(cum_probs * selections > r[0]):
+            centers.append(np.where(cum_probs * selections > r[0])[0][0])
+        # else:
+        #     centers.append(np.argmax(distances * selections))
 
     # DO NOT CHANGE CODE BELOW THIS LINE
     return centers
@@ -93,31 +92,32 @@ class KMeans():
         #   (i.e., average K-mean objective changes less than self.e)
         #   or until you have made self.max_iter updates.
         ###################################################################
+        centroids = np.array([x[i] for i in self.centers])
         objective = None
         assignments = None
         times = 0
-
+        
         for t in range(self.max_iter):
             times += 1
-            membership = np.zeros((N, len(self.centers)))
+            mapped_x = np.tile(x, (1, self.n_cluster)).reshape(N, self.n_cluster, D)
+            mapped_centroids = np.tile(centroids.reshape(1, self.n_cluster * D), (N, 1)).reshape(N, self.n_cluster, D)
+            distances = np.einsum("ijk, ijk->ij", mapped_x - mapped_centroids, mapped_x - mapped_centroids)
             
             # Update membership
-            for n in range(N):
-                label = np.argmin(np.array([np.sum((x[n] - self.centers[k])**2) for k in range(len(self.centers))]))
-                membership[n][label] = 1
+            membership = np.array([[1 if c == np.argmin(distances[n]) else 0 for c in range(self.n_cluster)] for n in range(N)])
 
             # Update centers
-            self.centers = (np.transpose(membership) @ x) / (np.transpose(membership) @ np.ones(x.shape))
+            centroids = (np.transpose(membership) @ x) / (np.transpose(membership) @ np.ones(x.shape))
 
-            assignments = membership @ np.arange(len(self.centers))
-            new_objective = np.sum((membership @ self.centers - x)**2)
+            assignments = membership @ np.arange(self.n_cluster)
+            new_objective = np.sum(membership * distances)
 
             if objective != None and objective - new_objective <= self.e:
                 break
 
             objective = new_objective
     
-        return self.centers, assignments, times
+        return centroids, assignments, times
 
 class KMeansClassifier():
 
@@ -164,28 +164,29 @@ class KMeansClassifier():
         ################################################################
         objective = None
         membership = None
-        centroids = centroid_func(len(x), self.n_cluster, x, self.generator)
+        centroids = np.array([x[i] for i in centroid_func(len(x), self.n_cluster, x, self.generator)])
         centroid_labels = np.ones(self.n_cluster)
 
         for t in range(self.max_iter):
-            membership = np.zeros((N, self.n_cluster))
+            mapped_x = np.tile(x, (1, self.n_cluster)).reshape(N, self.n_cluster, D)
+            mapped_centroids = np.tile(centroids.reshape(1, self.n_cluster * D), (N, 1)).reshape(N, self.n_cluster, D)
+            distances = np.einsum("ijk, ijk->ij", mapped_x - mapped_centroids, mapped_x - mapped_centroids)
             
             # Update membership
-            for n in range(N):
-                label = np.argmin(np.array([np.sum((x[n] - centroids[k])**2) for k in range(self.n_cluster)]))
-                membership[n][label] = 1
+            membership = np.array([[1 if c == np.argmin(distances[n]) else 0 for c in range(self.n_cluster)] for n in range(N)])
 
             # Update centers
             centroids = (np.transpose(membership) @ x) / (np.transpose(membership) @ np.ones(x.shape))
 
-            new_objective = np.sum((membership @ centroids - x)**2)
+            new_objective = np.sum(membership * distances)
 
             if objective != None and objective - new_objective <= self.e:
                 break
 
             objective = new_objective
 
-        centroid_labels = np.array([np.argmax(row) for row in np.transpose(membership) @ membership])
+        training_membership = np.array([[1 if c == y[n] else 0 for c in range(self.n_cluster)] for n in range(N)])
+        centroid_labels = np.array([np.argmax(votes) for votes in np.transpose(membership) @ training_membership])
         
         # DO NOT CHANGE CODE BELOW THIS LINE
         self.centroid_labels = centroid_labels
@@ -216,11 +217,12 @@ class KMeansClassifier():
         #    dataset (self.centroids, self.centroid_labels)
         ##########################################################################
         # Map x from (N, D) and centroids from (n_cluster, D) to (N, n_cluster, D)
-        # mapped_x = np.tile(x, (1, self.n_cluster)).reshape(N, self.n_cluster, D)
-        # mapped_centroids = np.tile(self.centroids.reshape(1, self.n_cluster*D), (N, 1)).reshape(N, self.n_cluster, D)
-        # distances = (mapped_x - mapped_centroids)**2
-        # print(np.argmin([(x[0] - self.centroids[k])**2 for k in range(self.n_cluster)]))
-        return np.array([self.centroid_labels[np.argmin([np.sum((point - self.centroids[k])**2) for k in range(self.n_cluster)])] for point in x])
+        mapped_x = np.tile(x, (1, self.n_cluster)).reshape(N, self.n_cluster, D)
+        mapped_centroids = np.tile(self.centroids.reshape(1, self.n_cluster*D), (N, 1)).reshape(N, self.n_cluster, D)
+        # Compute distances -> (N, self.n_cluster)
+        distances = np.einsum("ijk, ijk->ij", mapped_x - mapped_centroids, mapped_x - mapped_centroids)
+        
+        return np.array([self.centroid_labels[np.argmin(distances[n])] for n in range(N)])
 
 
 
@@ -244,4 +246,14 @@ def transform_image(image, code_vectors):
     # TODO
     # - replace each pixel (a 3-dimensional point) by its nearest code vector
     ##############################################################################
-    
+    W, L, D = image.shape
+    N, K = W * L, code_vectors.shape[0]
+    pixels = image.reshape(N, 3)
+
+    mapped_pixels = np.tile(pixels, (1, K)).reshape(N, K, 3)
+    mapped_code_vectors = np.tile(code_vectors.reshape(1, K * 3), (N, 1)).reshape(N, K, 3)
+    distances = np.einsum("ijk, ijk->ij", mapped_pixels - mapped_code_vectors, mapped_pixels - mapped_code_vectors)
+
+    new_pixels = np.array([code_vectors[np.argmin(distance)] for distance in distances])
+
+    return new_pixels.reshape(image.shape)
