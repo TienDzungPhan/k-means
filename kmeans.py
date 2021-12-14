@@ -29,21 +29,15 @@ def get_k_means_plus_plus_center_indices(n, n_cluster, x, generator=np.random):
     centers = [p]
 
     while len(centers) < n_cluster:
-        r = np.full(N, generator.rand())
+        r = generator.rand()
         centroids = np.array([x[i] for i in centers])
         mapped_x = np.tile(x, (1, len(centers))).reshape(N, len(centers), D)
         mapped_centroids = np.tile(centroids.reshape(1, len(centers) * D), (N, 1)).reshape(N, len(centers), D)
-        distances = np.einsum("ijk, ijk->ij", mapped_x - mapped_centroids, mapped_x - mapped_centroids)
-        max_distances = np.array([max(distance) for distance in distances])
-        argmax_distances = np.array([np.argmax(distances[i]) for i in range(len(distances))])
-        probabilities = max_distances / np.array([np.sum(np.transpose(distances)[k]) for k in argmax_distances])
-        cum_probs = np.cumsum(probabilities)
-        selections = np.array([0 if n in centers else 1 for n in range(N)])
-
-        if np.any(cum_probs * selections > r[0]):
-            centers.append(np.where(cum_probs * selections > r[0])[0][0])
-        # else:
-        #     centers.append(np.argmax(distances * selections))
+        distances = np.sum((mapped_x - mapped_centroids)**2, axis=2)
+        min_distances = np.array([min(distance) for distance in distances])
+        probabilities = min_distances / np.sum(min_distances)
+        cummulatives = np.cumsum(probabilities)
+        centers.append(np.where(cummulatives > r)[0][0])
 
     # DO NOT CHANGE CODE BELOW THIS LINE
     return centers
@@ -101,11 +95,13 @@ class KMeans():
             times += 1
             mapped_x = np.tile(x, (1, self.n_cluster)).reshape(N, self.n_cluster, D)
             mapped_centroids = np.tile(centroids.reshape(1, self.n_cluster * D), (N, 1)).reshape(N, self.n_cluster, D)
-            distances = np.einsum("ijk, ijk->ij", mapped_x - mapped_centroids, mapped_x - mapped_centroids)
+            distances = np.sum((mapped_x - mapped_centroids)**2, axis=2)
             
             # Update membership
-            membership = np.array([[1 if c == np.argmin(distances[n]) else 0 for c in range(self.n_cluster)] for n in range(N)])
-
+            membership = np.zeros((N, self.n_cluster))
+            for n in range(N):
+                label = np.argmin(distances[n])
+                membership[n][label] = 1
             # Update centers
             centroids = (np.transpose(membership) @ x) / (np.transpose(membership) @ np.ones(x.shape))
 
@@ -170,10 +166,14 @@ class KMeansClassifier():
         for t in range(self.max_iter):
             mapped_x = np.tile(x, (1, self.n_cluster)).reshape(N, self.n_cluster, D)
             mapped_centroids = np.tile(centroids.reshape(1, self.n_cluster * D), (N, 1)).reshape(N, self.n_cluster, D)
-            distances = np.einsum("ijk, ijk->ij", mapped_x - mapped_centroids, mapped_x - mapped_centroids)
+            distances = np.sum((mapped_x - mapped_centroids)**2, axis=2)
             
             # Update membership
-            membership = np.array([[1 if c == np.argmin(distances[n]) else 0 for c in range(self.n_cluster)] for n in range(N)])
+            # membership = np.array([[1 if c == np.argmin(distances[n]) else 0 for c in range(self.n_cluster)] for n in range(N)])
+            membership = np.zeros((N, self.n_cluster))
+            for n in range(N):
+                label = np.argmin(distances[n])
+                membership[n][label] = 1
 
             # Update centers
             centroids = (np.transpose(membership) @ x) / (np.transpose(membership) @ np.ones(x.shape))
@@ -220,7 +220,7 @@ class KMeansClassifier():
         mapped_x = np.tile(x, (1, self.n_cluster)).reshape(N, self.n_cluster, D)
         mapped_centroids = np.tile(self.centroids.reshape(1, self.n_cluster*D), (N, 1)).reshape(N, self.n_cluster, D)
         # Compute distances -> (N, self.n_cluster)
-        distances = np.einsum("ijk, ijk->ij", mapped_x - mapped_centroids, mapped_x - mapped_centroids)
+        distances = np.sum((mapped_x - mapped_centroids)**2, axis=2)
         
         return np.array([self.centroid_labels[np.argmin(distances[n])] for n in range(N)])
 
@@ -252,7 +252,7 @@ def transform_image(image, code_vectors):
 
     mapped_pixels = np.tile(pixels, (1, K)).reshape(N, K, 3)
     mapped_code_vectors = np.tile(code_vectors.reshape(1, K * 3), (N, 1)).reshape(N, K, 3)
-    distances = np.einsum("ijk, ijk->ij", mapped_pixels - mapped_code_vectors, mapped_pixels - mapped_code_vectors)
+    distances = np.sum((mapped_pixels - mapped_code_vectors)**2, axis=2)
 
     new_pixels = np.array([code_vectors[np.argmin(distance)] for distance in distances])
 
